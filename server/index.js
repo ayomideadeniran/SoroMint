@@ -13,6 +13,7 @@ const {
   logStartupInfo,
   logDatabaseConnection
 } = require('./utils/logger');
+const { setupSwagger } = require('./config/swagger');
 const { authenticate } = require('./middleware/auth');
 const authRoutes = require('./routes/auth-routes');
 
@@ -42,6 +43,21 @@ app.get('/api/tokens/:owner', asyncHandler(async (req, res) => {
     correlationId: req.correlationId,
     ownerPublicKey: req.params.owner
   });
+// Initialize Swagger documentation
+setupSwagger(app);
+
+/**
+ * @route GET /api/status
+ * @group System - System health and status endpoints
+ * @returns {object} 200 - Server status information
+ * @returns {Error} default - Unexpected error
+ * @example
+ * // Response example
+ * {
+ *   "status": "Server is running",
+ *   "network": "Test SDF Network ; September 2015"
+ * }
+ */
 // Authentication Routes (Public)
 app.use('/api/auth', authRoutes);
 
@@ -50,12 +66,66 @@ app.get('/api/status', (req, res) => {
   res.json({ status: 'Server is running', network: process.env.NETWORK_PASSPHRASE });
 });
 
+/**
+ * @route GET /api/tokens/:owner
+ * @group Tokens - Token management operations
+ * @param {string} owner.path - Owner's Stellar public key
+ * @returns {Array.<Token>} 200 - Array of tokens owned by the specified address
+ * @returns {Error} 400 - Invalid owner public key format
+ * @returns {Error} default - Unexpected error
+ * @security []
+ * @example
+ * // Response example
+ * [
+ *   {
+ *     "_id": "507f1f77bcf86cd799439011",
+ *     "name": "SoroMint Token",
+ *     "symbol": "SORO",
+ *     "decimals": 7,
+ *     "contractId": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
+ *     "ownerPublicKey": "GBZ4XGQW5X6V7Y2Z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T",
+ *     "createdAt": "2024-01-15T10:30:00.000Z"
+ *   }
+ * ]
+ */
+app.get('/api/tokens/:owner', asyncHandler(async (req, res) => {
 // Protected Routes - Require Authentication
 app.get('/api/tokens/:owner', authenticate, asyncHandler(async (req, res) => {
   const tokens = await Token.find({ ownerPublicKey: req.params.owner });
   res.json(tokens);
 }));
 
+/**
+ * @route POST /api/tokens
+ * @group Tokens - Token management operations
+ * @param {TokenCreateInput.model} body.required - Token creation data
+ * @returns {Token} 201 - Successfully created token
+ * @returns {Error} 400 - Missing required fields or validation error
+ * @returns {Error} 409 - Token with this contractId already exists
+ * @returns {Error} default - Unexpected error
+ * @security []
+ * @example
+ * // Request body
+ * {
+ *   "name": "SoroMint Token",
+ *   "symbol": "SORO",
+ *   "decimals": 7,
+ *   "contractId": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
+ *   "ownerPublicKey": "GBZ4XGQW5X6V7Y2Z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T"
+ * }
+ * @example
+ * // Response example
+ * {
+ *   "_id": "507f1f77bcf86cd799439011",
+ *   "name": "SoroMint Token",
+ *   "symbol": "SORO",
+ *   "decimals": 7,
+ *   "contractId": "CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE",
+ *   "ownerPublicKey": "GBZ4XGQW5X6V7Y2Z3A4B5C6D7E8F9G0H1I2J3K4L5M6N7O8P9Q0R1S2T",
+ *   "createdAt": "2024-01-15T10:30:00.000Z"
+ * }
+ */
+app.post('/api/tokens', asyncHandler(async (req, res) => {
 app.post('/api/tokens', authenticate, asyncHandler(async (req, res) => {
   const { name, symbol, decimals, contractId, ownerPublicKey } = req.body;
 
@@ -82,6 +152,7 @@ app.post('/api/tokens', authenticate, asyncHandler(async (req, res) => {
     tokenId: newToken._id
   });
   res.json(newToken);
+  res.status(201).json(newToken);
 }));
 
 app.get('/api/status', (req, res) => {
@@ -97,4 +168,6 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   logStartupInfo(PORT, process.env.NETWORK_PASSPHRASE || 'Unknown Network');
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📚 API Documentation available at http://localhost:${PORT}/api-docs`);
 });
