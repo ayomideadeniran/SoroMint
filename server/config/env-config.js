@@ -5,6 +5,7 @@
  * @dev Prevents server from starting if required variables are missing
  */
 
+require("dotenv").config();
 const envalid = require("envalid");
 const { logger } = require("../utils/logger");
 
