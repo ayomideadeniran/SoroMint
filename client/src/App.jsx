@@ -2,38 +2,28 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Wallet, Coins, Plus, List, ArrowRight, ShieldCheck } from 'lucide-react';
 import { SkeletonList, SkeletonTokenForm } from './components/Skeleton';
+import { useWalletStore, useTokenStore } from './store';
 
 const API_BASE = 'http://localhost:5000/api';
 
 function App() {
-  const [address, setAddress] = useState('');
-  const [tokens, setTokens] = useState([]);
+  // Use Zustand stores for global state
+  const { address, setWallet, disconnectWallet } = useWalletStore();
+  const { tokens, addToken, isLoading, setLoading, fetchTokens } = useTokenStore();
+  
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
     decimals: 7
   });
   const [isMinting, setIsMinting] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
 
   // Placeholder for Wallet Connection (Freighter/Albedo)
   const connectWallet = async () => {
     // In a real app, use @stellar/freighter-api
     const mockAddress = 'GB...' + Math.random().toString(36).substring(7).toUpperCase();
-    setAddress(mockAddress);
+    setWallet(mockAddress);
     fetchTokens(mockAddress);
-  };
-
-  const fetchTokens = async (userAddress) => {
-    try {
-      setIsLoading(true);
-      const resp = await axios.get(`${API_BASE}/tokens/${userAddress}`);
-      setTokens(resp.data);
-    } catch (err) {
-      console.error('Error fetching tokens', err);
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleMint = async (e) => {
@@ -54,7 +44,7 @@ function App() {
         ownerPublicKey: address
       });
 
-      setTokens([...tokens, resp.data]);
+      addToken(resp.data);
       setFormData({ name: '', symbol: '', decimals: 7 });
       alert('Token Minted Successfully!');
     } catch (err) {
@@ -75,7 +65,7 @@ function App() {
         </div>
         
         <button 
-          onClick={connectWallet}
+          onClick={address ? disconnectWallet : connectWallet}
           className="flex items-center gap-2 btn-primary"
         >
           <Wallet size={18} />
