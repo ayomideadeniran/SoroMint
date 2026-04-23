@@ -122,6 +122,14 @@ function validateEnv() {
       default: 3600,
       desc: "Cache TTL (Time-To-Live) in seconds for token metadata (default: 1 hour)",
     }),
+    PINATA_API_KEY: envalid.str({
+      default: "",
+      desc: "Pinata API key for IPFS pinning",
+    }),
+    PINATA_SECRET_API_KEY: envalid.str({
+      default: "",
+      desc: "Pinata secret API key for IPFS pinning",
+    }),
   }, {
     reporter: ({ errors, env }) => {
       if (Object.keys(errors).length > 0) {
