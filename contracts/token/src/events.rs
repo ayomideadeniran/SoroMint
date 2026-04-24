@@ -158,3 +158,15 @@ pub fn emit_transferability_updated(e: &Env, admin: &Address, transferable: bool
     let topics = (symbol_short!("xferable"), admin.clone());
     e.events().publish(topics, transferable);
 }
+
+pub fn emit_minter_mint(
+    e: &Env,
+    minter: &Address,
+    to: &Address,
+    amount: i128,
+    new_balance: i128,
+    new_supply: i128,
+) {
+    let topics = (Symbol::new(e, "mtr_mint"), minter.clone(), to.clone());
+    e.events().publish(topics, (amount, new_balance, new_supply));
+}

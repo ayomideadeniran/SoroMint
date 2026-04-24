@@ -8,6 +8,8 @@
 mod events;
 #[cfg(test)]
 mod test_transfer;
+#[cfg(test)]
+mod test_minting_limits;
 
 use soroban_sdk::token::TokenInterface;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
@@ -24,7 +26,17 @@ pub enum DataKey {
     Supply,
     MetadataHash,
     FeeConfig,
-    Transferable
+    Transferable,
+    MintLimit(Address),
+    MintWindow(Address),
+}
+
+// Rolling 24-hour window state for a minter
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MintWindowState {
+    pub minted: i128,
+    pub window_start: u64, // Unix timestamp (seconds)
 }
 
 #[contracttype]
@@ -181,6 +193,61 @@ impl SoroMintToken {
         e.storage().instance().set(&DataKey::Symbol, &new_symbol);
 
         events::emit_metadata_updated(&e, &admin, &old_name, &old_symbol, &new_name, &new_symbol);
+    }
+
+    /// Set the maximum tokens a Minter role address may mint within any rolling 24-hour window.
+    pub fn set_minter_limit(e: Env, minter: Address, limit: i128) {
+        soromint_lifecycle::require_not_paused(&e);
+        let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        if limit <= 0 { panic!("limit must be positive"); }
+        e.storage().persistent().set(&DataKey::MintLimit(minter), &limit);
+    }
+
+    /// Returns the configured 24-hour mint limit for a minter, or None if unset.
+    pub fn minter_limit(e: Env, minter: Address) -> Option<i128> {
+        e.storage().persistent().get(&DataKey::MintLimit(minter))
+    }
+
+    /// Mint tokens as a Minter role address, subject to the rolling 24-hour cap.
+    pub fn minter_mint(e: Env, minter: Address, to: Address, amount: i128) {
+        soromint_lifecycle::require_not_paused(&e);
+        if amount <= 0 { panic!("mint amount must be positive"); }
+        minter.require_auth();
+
+        let limit: i128 = e.storage()
+            .persistent()
+            .get(&DataKey::MintLimit(minter.clone()))
+            .expect("no mint limit configured for minter");
+
+        let now: u64 = e.ledger().timestamp();
+        const WINDOW: u64 = 86_400; // 24 hours in seconds
+
+        let mut state: MintWindowState = e.storage()
+            .persistent()
+            .get(&DataKey::MintWindow(minter.clone()))
+            .unwrap_or(MintWindowState { minted: 0, window_start: now });
+
+        if now >= state.window_start + WINDOW {
+            state = MintWindowState { minted: 0, window_start: now };
+        }
+
+        if state.minted + amount > limit {
+            panic!("minting limit exceeded for period");
+        }
+
+        state.minted += amount;
+        e.storage().persistent().set(&DataKey::MintWindow(minter.clone()), &state);
+
+        let mut balance = Self::read_balance(&e, &to);
+        balance += amount;
+        Self::write_balance(&e, &to, balance);
+
+        let mut supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap_or(0);
+        supply += amount;
+        e.storage().instance().set(&DataKey::Supply, &supply);
+
+        events::emit_minter_mint(&e, &minter, &to, amount, balance, supply);
     }
 }
 
