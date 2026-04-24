@@ -170,3 +170,13 @@ pub fn emit_minter_mint(
     let topics = (Symbol::new(e, "mtr_mint"), minter.clone(), to.clone());
     e.events().publish(topics, (amount, new_balance, new_supply));
 }
+
+pub fn emit_snapshot_taken(e: &Env, account: &Address, ledger: u32, balance: i128) {
+    let topics = (Symbol::new(e, "snapshot"), account.clone());
+    e.events().publish(topics, (ledger, balance));
+}
+
+pub fn emit_supply_snapshot_taken(e: &Env, ledger: u32, supply: i128) {
+    let topics = (symbol_short!("sup_snap"),);
+    e.events().publish(topics, (ledger, supply));
+}

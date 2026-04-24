@@ -10,6 +10,8 @@ mod events;
 mod test_transfer;
 #[cfg(test)]
 mod test_minting_limits;
+#[cfg(test)]
+mod test_snapshots;
 
 use soroban_sdk::token::TokenInterface;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
@@ -29,6 +31,8 @@ pub enum DataKey {
     Transferable,
     MintLimit(Address),
     MintWindow(Address),
+    Snapshot(Address, u32),  // (account, ledger_sequence) -> i128
+    SupplySnapshot(u32),     // ledger_sequence -> i128
 }
 
 // Rolling 24-hour window state for a minter
@@ -248,6 +252,44 @@ impl SoroMintToken {
         e.storage().instance().set(&DataKey::Supply, &supply);
 
         events::emit_minter_mint(&e, &minter, &to, amount, balance, supply);
+    }
+
+    /// Record the current balance of `account` at the current ledger sequence.
+    /// Anyone may call this; it is a read-then-write with no auth requirement.
+    pub fn take_snapshot(e: Env, account: Address) -> u32 {
+        let ledger = e.ledger().sequence();
+        let balance = Self::read_balance(&e, &account);
+        e.storage()
+            .persistent()
+            .set(&DataKey::Snapshot(account.clone(), ledger), &balance);
+        events::emit_snapshot_taken(&e, &account, ledger, balance);
+        ledger
+    }
+
+    /// Return the balance recorded for `account` at `ledger`, or None if no snapshot exists.
+    pub fn snapshot_balance(e: Env, account: Address, ledger: u32) -> Option<i128> {
+        e.storage()
+            .persistent()
+            .get(&DataKey::Snapshot(account, ledger))
+    }
+
+    /// Record the total supply at the current ledger sequence.
+    /// Admin-only to prevent spam.
+    pub fn take_supply_snapshot(e: Env) -> u32 {
+        let admin: Address = e.storage().instance().get(&DataKey::Admin).unwrap();
+        admin.require_auth();
+        let ledger = e.ledger().sequence();
+        let supply: i128 = e.storage().instance().get(&DataKey::Supply).unwrap_or(0);
+        e.storage()
+            .persistent()
+            .set(&DataKey::SupplySnapshot(ledger), &supply);
+        events::emit_supply_snapshot_taken(&e, ledger, supply);
+        ledger
+    }
+
+    /// Return the total supply recorded at `ledger`, or None if no snapshot exists.
+    pub fn snapshot_supply(e: Env, ledger: u32) -> Option<i128> {
+        e.storage().persistent().get(&DataKey::SupplySnapshot(ledger))
     }
 }
 
